@@ -1,4 +1,18 @@
 """
+Copy of envs/bottleneck.py
+This contains the modifications made to the original environment 
+with fairness terms in the reward function
+
+––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+change reward computed
+add fairness term
+
+use variance (var) of vehicle speeds
+experiment 1: fairness from only edges w/4 lanes (edges 1-3)
+experiment 2: fairness w/with edges 1-4 (after bottleneck)
+
+––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––––
+
 Environments for training vehicles to reduce capacity drops in a bottleneck.
 
 This environment was used in:
@@ -7,7 +21,6 @@ E. Vinitsky, K. Parvate, A. Kreidieh, C. Wu, Z. Hu, A. Bayen, "Lagrangian
 Control through Deep-RL: Applications to Bottleneck Decongestion," IEEE
 Intelligent Transportation Systems Conference (ITSC), 2018.
 """
-
 from flow.controllers.rlcontroller import RLController
 from flow.controllers.lane_change_controllers import SimLaneChangeController
 from flow.controllers.routing_controllers import ContinuousRouter
@@ -44,6 +57,14 @@ MEAN_NUM_SECONDS_WAIT_AT_TOLL = 15  # Average waiting time at toll
 
 BOTTLE_NECK_LEN = 280  # Length of bottleneck
 NUM_VEHICLE_NORM = 20
+
+# reward terms scaling for fairness terms
+# adding scaling terms because at some timesteps the stds go upto 7
+# and we don't want these terms to dominate the outflow_rate reward term
+# NOTE: Can make FAIR_SCALIN_4 = 0 for just considering fairness on edge_3
+# as discussed 
+FAIR_SCALING_3 = 0   # scaling for fairness reward on edge 3
+FAIR_SCALING_4 = 1/10   # scaling for fairness reward on edge 4
 
 ADDITIONAL_ENV_PARAMS = {
     # maximum acceleration for autonomous vehicles, in m/s^2
@@ -88,106 +109,108 @@ ADDITIONAL_VSL_ENV_PARAMS = {
 START_RECORD_TIME = 0.0  # Time to start recording
 PERIOD = 10.0
 
+
 class BottleneckEnv(Env):
-    """Abstract bottleneck environment.
+    """
+        Abstract bottleneck environment.
 
-    This environment is used as a simplified representation of the toll booth
-    portion of the bay bridge. Contains ramp meters, and a toll both.
+        This environment is used as a simplified representation of the toll booth
+        portion of the bay bridge. Contains ramp meters, and a toll both.
 
-    Additional
-    ----------
-        Vehicles are rerouted to the start of their original routes once
-        they reach the end of the network in order to ensure a constant
-        number of vehicles.
+        Additional
+        ----------
+            Vehicles are rerouted to the start of their original routes once
+            they reach the end of the network in order to ensure a constant
+            number of vehicles.
 
-    Attributes
-    ----------
-    scaling : int
-        A factor describing how many lanes are in the system. Scaling=1 implies
-        4 lanes going to 2 going to 1, scaling=2 implies 8 lanes going to 4
-        going to 2, etc.
-    edge_dict : dict of dicts
-        A dict mapping edges to a dict of lanes where each entry in the lane
-        dict tracks the vehicles that are in that lane. Used to save on
-        unnecessary lookups.
-    cars_waiting_for_toll : {veh_id: {lane_change_mode: int, color: (int)}}
-        A dict mapping vehicle ids to a dict tracking the color and lane change
-        mode of vehicles before they entered the toll area. When vehicles exit
-        the tollbooth area, these values are used to set the lane change mode
-        and color of the vehicle back to how they were before they entered the
-        toll area.
-    cars_before_ramp : {veh_id: {lane_change_mode: int, color: (int)}}
-        Identical to cars_waiting_for_toll, but used to track cars approaching
-        the ramp meter versus approaching the tollbooth.
-    toll_wait_time : np.ndarray(float)
-        Random value, sampled from a gaussian indicating how much a vehicle in
-        each lane should wait to pass through the toll area. This value is
-        re-sampled for each approaching vehicle. That is, whenever a vehicle
-        approaches the toll area, we re-sample from the Gaussian to determine
-        its weight time.
-    fast_track_lanes : np.ndarray(int)
-        Middle lanes of the tollbooth are declared fast-track lanes, this numpy
-        array keeps track of which lanes these are. At a fast track lane, the
-        mean of the Gaussian from which we sample wait times is given by
-        MEAN_NUM_SECONDS_WAIT_AT_FAST_TRACK.
-    tl_state : str
-        String tracking the color of the traffic lights at the tollbooth. These
-        traffic lights are used imitate the effect of a tollbooth. If lane 1-4
-        are respectively green, red, red, green, then this string would be
-        "GrrG"
-    n_crit : int
-        The ALINEA algorithm adjusts the ratio of red to green time for the
-        ramp-metering traffic light based on feedback on how congested the
-        system is. As the measure of congestion, we use the number of vehicles
-        stuck in the bottleneck (edge 4). The critical operating value it tries
-        to stabilize the number of vehicles in edge 4 is n_crit. If there are
-        more than n_crit vehicles on edge 4, we increase the fraction of red
-        time to decrease the inflow to edge 4.
-    q_max : float
-        The ALINEA algorithm tries to control the flow rate through the ramp
-        meter. q_max is the maximum possible estimated flow we allow through
-        the bottleneck and can be converted into a maximum value for the ratio
-        of green to red time that we allow.
-    q_min : float
-        Similar to q_max, this is used to set the minimum value of green to red
-        ratio that we allow.
-    q : float
-        This value tracks the flow we intend to allow through the bottleneck.
-        For details on how it is computed, please read the alinea method or the
-        paper linked in that method.
-    feedback_update_time : float
-        The parameters of the ALINEA algorithm are only updated every
-        feedback_update_time seconds.
-    feedback_timer : float
-        This keeps track of how many seconds have passed since the ALINEA
-        parameters were last updated. If it exceeds feedback_update_time, the
-        parameters are updated
-    cycle_time : int
-        This value tracks how long a green-red cycle of the ramp meter is. The
-        first self.green_time seconds will be green and the remainder of the
-        cycle will be red.
-    ramp_state : np.ndarray
-        Array of floats of length equal to the number of lanes. For each lane,
-        this value tracks how many seconds of a given cycle have passed in that
-        lane. Each lane is offset from its adjacent lanes by
-        cycle_offset/(self.scaling * MAX_LANES) seconds. This offsetting means
-        that lights are offset in when they releasse vehicles into the
-        bottleneck. This helps maximize the throughput of the ramp meter.
-    green_time : float
-        How many seconds of a given cycle the light should remain green 4.
-        Defaults to 4 as this is just enough time for two vehicles to enter the
-        bottleneck from a given traffic light.
-    feedback_coeff : float
-        This is the gain on the feedback in the ALINEA algorithm
-    smoothed_num : np.ndarray
-        Numpy array keeping track of how many vehicles were in edge 4 over the
-        last 10 time seconds. This provides a more stable estimate of the
-        number of vehicles in edge 4.
-    outflow_index : int
-        Keeps track of which index of smoothed_num we should update with the
-        latest number of vehicles in the bottleneck. Should eventually be
-        deprecated as smoothed_num should be switched to a queue instead of an
-        array.
+        Attributes
+        ----------
+        scaling : int
+            A factor describing how many lanes are in the system. Scaling=1 implies
+            4 lanes going to 2 going to 1, scaling=2 implies 8 lanes going to 4
+            going to 2, etc.
+        edge_dict : dict of dicts
+            A dict mapping edges to a dict of lanes where each entry in the lane
+            dict tracks the vehicles that are in that lane. Used to save on
+            unnecessary lookups.
+        cars_waiting_for_toll : {veh_id: {lane_change_mode: int, color: (int)}}
+            A dict mapping vehicle ids to a dict tracking the color and lane change
+            mode of vehicles before they entered the toll area. When vehicles exit
+            the tollbooth area, these values are used to set the lane change mode
+            and color of the vehicle back to how they were before they entered the
+            toll area.
+        cars_before_ramp : {veh_id: {lane_change_mode: int, color: (int)}}
+            Identical to cars_waiting_for_toll, but used to track cars approaching
+            the ramp meter versus approaching the tollbooth.
+        toll_wait_time : np.ndarray(float)
+            Random value, sampled from a gaussian indicating how much a vehicle in
+            each lane should wait to pass through the toll area. This value is
+            re-sampled for each approaching vehicle. That is, whenever a vehicle
+            approaches the toll area, we re-sample from the Gaussian to determine
+            its weight time.
+        fast_track_lanes : np.ndarray(int)
+            Middle lanes of the tollbooth are declared fast-track lanes, this numpy
+            array keeps track of which lanes these are. At a fast track lane, the
+            mean of the Gaussian from which we sample wait times is given by
+            MEAN_NUM_SECONDS_WAIT_AT_FAST_TRACK.
+        tl_state : str
+            String tracking the color of the traffic lights at the tollbooth. These
+            traffic lights are used imitate the effect of a tollbooth. If lane 1-4
+            are respectively green, red, red, green, then this string would be
+            "GrrG"
+        n_crit : int
+            The ALINEA algorithm adjusts the ratio of red to green time for the
+            ramp-metering traffic light based on feedback on how congested the
+            system is. As the measure of congestion, we use the number of vehicles
+            stuck in the bottleneck (edge 4). The critical operating value it tries
+            to stabilize the number of vehicles in edge 4 is n_crit. If there are
+            more than n_crit vehicles on edge 4, we increase the fraction of red
+            time to decrease the inflow to edge 4.
+        q_max : float
+            The ALINEA algorithm tries to control the flow rate through the ramp
+            meter. q_max is the maximum possible estimated flow we allow through
+            the bottleneck and can be converted into a maximum value for the ratio
+            of green to red time that we allow.
+        q_min : float
+            Similar to q_max, this is used to set the minimum value of green to red
+            ratio that we allow.
+        q : float
+            This value tracks the flow we intend to allow through the bottleneck.
+            For details on how it is computed, please read the alinea method or the
+            paper linked in that method.
+        feedback_update_time : float
+            The parameters of the ALINEA algorithm are only updated every
+            feedback_update_time seconds.
+        feedback_timer : float
+            This keeps track of how many seconds have passed since the ALINEA
+            parameters were last updated. If it exceeds feedback_update_time, the
+            parameters are updated
+        cycle_time : int
+            This value tracks how long a green-red cycle of the ramp meter is. The
+            first self.green_time seconds will be green and the remainder of the
+            cycle will be red.
+        ramp_state : np.ndarray
+            Array of floats of length equal to the number of lanes. For each lane,
+            this value tracks how many seconds of a given cycle have passed in that
+            lane. Each lane is offset from its adjacent lanes by
+            cycle_offset/(self.scaling * MAX_LANES) seconds. This offsetting means
+            that lights are offset in when they releasse vehicles into the
+            bottleneck. This helps maximize the throughput of the ramp meter.
+        green_time : float
+            How many seconds of a given cycle the light should remain green 4.
+            Defaults to 4 as this is just enough time for two vehicles to enter the
+            bottleneck from a given traffic light.
+        feedback_coeff : float
+            This is the gain on the feedback in the ALINEA algorithm
+        smoothed_num : np.ndarray
+            Numpy array keeping track of how many vehicles were in edge 4 over the
+            last 10 time seconds. This provides a more stable estimate of the
+            number of vehicles in edge 4.
+        outflow_index : int
+            Keeps track of which index of smoothed_num we should update with the
+            latest number of vehicles in the bottleneck. Should eventually be
+            deprecated as smoothed_num should be switched to a queue instead of an
+            array.
     """
 
     def __init__(self, env_params, sim_params, network, simulator='traci'):
@@ -489,38 +512,39 @@ class BottleneckEnv(Env):
         return np.asarray([1])
 
 
-class BottleneckAccelEnv(BottleneckEnv):
-    """BottleneckAccelEnv.
+class BottleneckAccelFairEnv(BottleneckEnv):
+    """
+        BottleneckAccelFairEnv.
 
-    Environment used to train vehicles to effectively pass through a
-    bottleneck.
+        Environment used to train vehicles to effectively pass through a
+        bottleneck.
 
-    States
-        An observation is the edge position, speed, lane, and edge number of
-        the AV, the distance to and velocity of the vehicles
-        in front and behind the AV for all lanes. Additionally, we pass the
-        density and average velocity of all edges. Finally, we pad with
-        zeros in case an AV has exited the system.
-        Note: the vehicles are arranged in an initial order, so we pad
-        the missing vehicle at its normal position in the order
+        States
+            An observation is the edge position, speed, lane, and edge number of
+            the AV, the distance to and velocity of the vehicles
+            in front and behind the AV for all lanes. Additionally, we pass the
+            density and average velocity of all edges. Finally, we pad with
+            zeros in case an AV has exited the system.
+            Note: the vehicles are arranged in an initial order, so we pad
+            the missing vehicle at its normal position in the order
 
-    Actions
-        The action space consist of a list in which the first half
-        is accelerations and the second half is a direction for lane
-        changing that we round
+        Actions
+            The action space consist of a list in which the first half
+            is accelerations and the second half is a direction for lane
+            changing that we round
 
-    Rewards
-        The reward is the two-norm of the difference between the speed of
-        all vehicles in the network and some desired speed. To this we add
-        a positive reward for moving the vehicles forward, and a penalty to
-        vehicles that lane changing too frequently.
+        Rewards
+            The reward is the two-norm of the difference between the speed of
+            all vehicles in the network and some desired speed. To this we add
+            a positive reward for moving the vehicles forward, and a penalty to
+            vehicles that lane changing too frequently.
 
-    Termination
-        A rollout is terminated once the time horizon is reached.
+        Termination
+            A rollout is terminated once the time horizon is reached.
     """
 
     def __init__(self, env_params, sim_params, network, simulator='traci'):
-        """Initialize BottleneckAccelEnv."""
+        """Initialize BottleneckAccelFairEnv."""
         for p in ADDITIONAL_RL_ENV_PARAMS.keys():
             if p not in env_params.additional_params:
                 raise KeyError(
@@ -539,6 +563,7 @@ class BottleneckAccelEnv(BottleneckEnv):
         num_rl_veh = self.num_rl
         num_obs = 2 * num_edges + 4 * MAX_LANES * self.scaling \
             * num_rl_veh + 4 * num_rl_veh
+
         # NOTE Changing this to inf
         return Box(low=0, high=np.inf, shape=(num_obs, ), dtype=np.float32)
 
@@ -719,41 +744,40 @@ class BottleneckAccelEnv(BottleneckEnv):
                     pass
 
 
-class BottleneckDesiredVelocityEnv(BottleneckEnv):
-    """BottleneckDesiredVelocityEnv.
+class BottleneckDesiredVelocityFairEnv(BottleneckEnv):
+    """
+        BottleneckDesiredVelocityFairEnv.
 
-    Environment used to train vehicles to effectively pass through a
-    bottleneck by specifying the velocity that RL vehicles should attempt to
-    travel in certain regions of space.
+        Environment used to train vehicles to effectively pass through a
+        bottleneck by specifying the velocity that RL vehicles should attempt to
+        travel in certain regions of space.
 
-    States
-        An observation is the number of vehicles in each lane in each
-        segment
+        States
+            An observation is the number of vehicles in each lane in each
+            segment
 
-    Actions
-        The action space consist of a list in which each element
-        corresponds to the desired speed that RL vehicles should travel in
-        that region of space
+        Actions
+            The action space consist of a list in which each element
+            corresponds to the desired speed that RL vehicles should travel in
+            that region of space
 
-    Rewards
-        The reward is the outflow of the bottleneck plus a reward
-        for RL vehicles making forward progress
+        Rewards
+            The reward is the outflow of the bottleneck plus a reward
+            for RL vehicles making forward progress plus a penalty
+            for unfair controls
     """
 
     def __init__(self, env_params, sim_params, network, simulator='traci'):
-        """Initialize BottleneckDesiredVelocityEnv."""
+        """Initialize BottleneckDesiredVelocityFairEnv."""
         super().__init__(env_params, sim_params, network, simulator)
         for p in ADDITIONAL_VSL_ENV_PARAMS.keys():
             if p not in env_params.additional_params:
                 raise KeyError(
                     'Environment parameter "{}" not supplied'.format(p))
-        print('_'*50)
-        print('Importing from envs folder rather than flow')
-        print('_'*50)
         # default (edge, segment, controlled) status
         add_env_params = self.env_params.additional_params
         default = [(str(i), 1, True) for i in range(1, 6)]
-        super(BottleneckDesiredVelocityEnv, self).__init__(env_params,
+        super(BottleneckDesiredVelocityFairEnv, self).__init__(env_params,
                                                            sim_params,
                                                            network)
         self.segments = add_env_params.get("controlled_segments", default)
@@ -983,15 +1007,57 @@ class BottleneckDesiredVelocityEnv(BottleneckEnv):
                     self.k.vehicle.set_max_speed(rl_id, 23.0)
 
     def compute_reward(self, rl_actions, **kwargs):
-        """Outflow rate over last ten seconds normalized to max of 1."""
+        """Evaluate the fairness rewards"""
         if self.env_params.evaluate:
             if self.time_counter == self.env_params.horizon:
                 reward = self.k.vehicle.get_outflow_rate(500)
             else:
                 return 0
         else:
-            reward = self.k.vehicle.get_outflow_rate(10 * self.sim_step) / \
+            veh_ids_edge_3 = self.k.vehicle.get_ids_by_edge('3') # the first bottleneck
+            veh_ids_edge_4 = self.k.vehicle.get_ids_by_edge('4') # the second bottleneck
+
+            num_lanes_3 = self.k.network.num_lanes('3') # lanes in the first bottleneck
+            num_lanes_4 = self.k.network.num_lanes('4') # lanes in the second bottleneck
+            lane_speeds_3_list = [[] for lane_num in range(num_lanes_3)]
+            lane_speeds_4_list = [[] for lane_num in range(num_lanes_4)]
+
+            # get the speeds of all vehicles in different lanes
+            for veh_id in veh_ids_edge_3:
+                lane = self.k.vehicle.get_lane(veh_id)
+                speed = self.k.vehicle.get_speed(veh_id)
+                lane_speeds_3_list[lane].append(speed)
+            
+            for veh_id in veh_ids_edge_4:
+                lane = self.k.vehicle.get_lane(veh_id)
+                speed = self.k.vehicle.get_speed(veh_id)
+                lane_speeds_4_list[lane].append(speed)
+
+            if not any(lane_speeds_3_list):
+                # if all lists of lane speeds in lane_speeds_3_list are empty (no cars in the edge) then give 0 
+                fair_rew_edge3 = 0
+            else:
+                # evaluate the mean speeds for each lane in edge 3 if the list of speeds for that lane is non empty
+                mean_speeds_3 = [np.mean(lane_speeds) for lane_speeds in lane_speeds_3_list if lane_speeds]
+                # ignore nans while evaluating std
+                fair_rew_edge3 = - np.nanstd(mean_speeds_3)
+
+            if not any(lane_speeds_4_list):
+                # if all lists of lane speeds in lane_speeds_4_list are empty (no cars in the edge) then give 0 
+                fair_rew_edge4 = 0
+            else:
+                # evaluate the mean speeds for each lane in edge 4 if the list of speeds for that lane is non empty
+                mean_speeds_4 = [np.mean(lane_speeds) for lane_speeds in lane_speeds_4_list if lane_speeds]
+                # ignore nans while evaluating std
+                fair_rew_edge4 = - np.nanstd(mean_speeds_4) # give penalty
+
+            step_reward = self.k.vehicle.get_outflow_rate(10 * self.sim_step) / \
                 (2000.0 * self.scaling)
+            
+            reward = step_reward + \
+                    (FAIR_SCALING_3 * fair_rew_edge3) + \
+                    (FAIR_SCALING_4 * fair_rew_edge4)
+
         return reward
 
     def reset(self):
@@ -1092,3 +1158,4 @@ class BottleneckDesiredVelocityEnv(BottleneckEnv):
         self.time_counter = 0
 
         return observation
+

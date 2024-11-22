@@ -1,0 +1,102 @@
+# SuMO:
+
+Commands run locally to install:
+
+#
+sudo apt-get install sumo sumo-tools sumo-doc
+
+# optional pip command from the installation tutorial? Get other python dependencies working?
+#
+
+# Flow:
+
+git clone https://github.com/flow-project/flow.git
+
+# (creating a conda environment for it)
+conda env create -f environment.yml
+conda activate flow
+python setup.py develop  # Causes issues, needed to do requirements.txt modifications
+
+
+# Having issues with the last step. Will try the provided install script (not optimistic)
+scripts/setup_sumo_ubuntu1804.sh
+
+# Got imports to work, but the tutorial/example code will not work. So trying some things
+# 1: Try to link to my system install of sumo, not the weird script local install:
+
+dpkg -L sumo
+
+# This did not fix it! some issue with netconvert...
+# Trying libgdal-dev installation:
+apt-get install libgdal-dev
+
+# Okay, latest version is installed. Perhaps an older version is expected?
+# Cheap patch: Create symlink:
+
+sudo ln -s /usr/lib/libgdal.so /usr/lib/libgdal.so.20
+
+# Also, understanding symlinks: https://stackoverflow.com/questions/185899/what-is-the-difference-between-a-symbolic-link-and-a-hard-link
+
+# libproj is missing
+sudo apt-get install libproj-dev
+
+# Nope! Making symlink...
+sudo ln -s /usr/lib/x86_64-linux-gnu/libproj.so /usr/lib/x86_64-linux-gnu/libproj.so.12
+
+# Unresolved symbol issue:
+# This means it's a version issue that can't be fixed with just symlinks...
+
+# Note: Leaving symlinks for now, even though they're sort of broken...
+
+# For testing, export this as SUMO_HOME:
+
+export SUMO_HOME=/usr/bin
+
+# It works! Sorta. It does a website lookup though for some files. For example, this directory is queried:
+https://sumo.dlr.de/xsd/
+
+
+# Looks like the training script requires another exotic repository as a requirement...
+# called: hbaseline
+# Link: https://github.com/AboudyKreidieh/h-baselines
+
+# Commands I followed:
+# Clone this somewhere:
+git clone git@github.com:AboudyKreidieh/h-baselines.git
+
+# From the (flow) environment, install this cloned repository using git:
+cd h-baselines/
+pip install -e .
+
+# This sort of works, still broken dependences are here though.
+
+# How to use train.py in the rl folder, from the (flow) environment)
+
+python train.py ./exp_configs/rl/singleagent/bottleneck0_benchmark.py
+
+# This generates awful errors...
+# Googling the issue: protobuf library should be downgraded?
+# https://stackoverflow.com/questions/72441758/typeerror-descriptors-cannot-not-be-created-directly
+# Downgrade protobuf in (flow) environment:
+pip install protobuf==3.20.*
+
+# Not important experiment script properly. Trace:
+./exp_configs/rl/singleagent/bottleneck0_benchmark.py
+Traceback (most recent call last):
+  File "train.py", line 373, in <module>
+    main(sys.argv[1:])
+  File "train.py", line 341, in main
+    "exp_configs.rl.singleagent", fromlist=[flags.exp_config])
+ModuleNotFoundError: No module named 'exp_configs.rl.singleagent.'
+
+# Even after getting this to work, debugging weird import issues.
+# Related: https://stackoverflow.com/questions/44834/what-does-all-mean-in-python
+
+# Fixed! Dont use the path, just use the file/module name:
+
+# DO THIS:
+python train.py bottleneck0_benchmark
+
+# NOT THIS:
+python train.py ./exp_configs/rl/singleagent/bottleneck0_benchmark.py
+

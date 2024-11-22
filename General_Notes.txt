@@ -1,0 +1,24 @@
+# Inspiration project
+
+Paper: https://nsidn98.github.io/files/fair_mixed_autonomy.pdf
+
+Git repository: https://github.com/nsidn98/MixedAutonomyRL
+
+
+# SuMO:
+
+Documentation: https://sumo.dlr.de/docs/
+
+Install is easy on linux, using apt: https://sumo.dlr.de/docs/Installing/index.html
+
+# GUI tools are available: https://sumo.dlr.de/docs/Tutorials/Hello_World.html
+
+# sumo-gui documentation: https://sumo.dlr.de/docs/sumo-gui.html
+
+# In general: it seems to be a set of tools for building networks and running simulations.
+
+# Flow:
+
+Project github page: https://github.com/flow-project/flow
+
+Installation instructions: https://flow.readthedocs.io/en/latest/flow_setup.html
