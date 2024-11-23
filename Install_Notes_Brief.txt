@@ -1,0 +1,52 @@
+# Jeremy Lim
+# Brief install notes. More readable. This sets up the Flow conda environment and Sumo installation to our local PC.
+# Could turn into a dockerfile later?
+
+# SuMO installation:
+sudo apt-get install sumo sumo-tools sumo-doc
+
+# Flow environment installation:
+
+git clone https://github.com/flow-project/flow.git
+
+(if you start from our project, you can use: https://github.com/jrwplm10/RL_Project_Group_8.git)
+
+# In the repository.
+conda env create -f environment_repaired.yml
+conda activate flow
+python setup.py develop
+
+# NOTE: TO run any scripts, you must export this as the SUMO_HOME variable:
+export SUMO_HOME=/usr/bin
+
+# Additional requirements, as of 11/22/24: (Do these steps in the (flow) environment)
+
+# Additional dependencies:
+pip install stable-baselines
+
+# Downgrade protobuf in (flow) environment:
+pip install protobuf==3.20.*
+
+# Additional dependency: h-baselines:
+# Clone this somewhere (doesn't matter where; be chaotic if you want):
+git clone git@github.com:AboudyKreidieh/h-baselines.git
+
+# From the (flow) environment, install this cloned repository using git:
+cd h-baselines/  # Where ever you put it.
+pip install -e . # Installs this git repository into your conda environment.
+
+# NOTE: Expect some bugs/broken dependencies. This codebase is old & not super stable...
+
+# ~~~~~~~~~~~~~~~ Running experiments ~~~~~~~~~~~~~~~~~ #
+
+# Looks like the scripts in exp_configs set up and run various experiments.
+
+# To run the bottle0 benchmark (in /exp_configs/rl/singleagent/bottleneck0_benchmark.py), do the following:
+
+# DO THIS:
+python train.py bottleneck0_benchmark
+
+# NOT THIS:
+python train.py ./exp_configs/rl/singleagent/bottleneck0_benchmark.py
+
+# I think (hope) it will work for the other exp_configs files...

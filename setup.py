@@ -42,7 +42,6 @@ setup(
     packages=find_packages(),
     description=("A system for applying deep reinforcement learning and "
                  "control to autonomous vehicles and traffic infrastructure"),
-    long_description=open("README.md").read(),
     url="https://github.com/flow-project/flow",
     keywords=("autonomous vehicles intelligent-traffic-control"
               "reinforcement-learning deep-learning python"),

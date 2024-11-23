@@ -55,6 +55,8 @@ export SUMO_HOME=/usr/bin
 # It works! Sorta. It does a website lookup though for some files. For example, this directory is queried:
 https://sumo.dlr.de/xsd/
 
+# Add another required library:
+pip install stable-baselines
 
 # Looks like the training script requires another exotic repository as a requirement...
 # called: hbaseline
@@ -68,7 +70,7 @@ git clone git@github.com:AboudyKreidieh/h-baselines.git
 cd h-baselines/
 pip install -e .
 
-# This sort of works, still broken dependences are here though.
+# This sort of works, still broken dependencies are here though.
 
 # How to use train.py in the rl folder, from the (flow) environment)
 
