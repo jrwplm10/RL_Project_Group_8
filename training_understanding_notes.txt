@@ -1,0 +1,14 @@
+JL - trying to figure out how to access trained model, see simulations, etc.
+
+
+This library is used to run the RL algorithms:
+https://github.com/ray-project/ray/tree/master/rllib
+
+This library is used to run training:
+https://pypi.org/project/ray/
+
+Important concepts:
+https://docs.ray.io/en/master/rllib/key-concepts.html
+
+Flow documentation may be helpful:
+https://flow.readthedocs.io/en/latest/intro.html

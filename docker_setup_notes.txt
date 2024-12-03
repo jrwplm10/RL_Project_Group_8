@@ -1,0 +1,36 @@
+# Installing docker locally:
+
+https://www.digitalocean.com/community/tutorials/how-to-install-and-use-docker-on-ubuntu-20-04
+
+# WPI Turing docker/apptainer support:
+https://docs.turing.wpi.edu/software/docker/
+
+# Apptainer docs:
+https://apptainer.org/docs/user/main/docker_and_oci.html
+
+# Apptainer installation:
+https://apptainer.org/docs/admin/main/installation.html#installation-on-linux
+(Doing non-setuid installation... complicated security issue)
+
+# Apptainer definition files:
+https://apptainer.org/docs/user/latest/definition_files.html#definition-files
+
+# How to build from a definition file:
+https://apptainer.org/docs/user/latest/build_a_container.html
+
+# How to actually run an apptainer file:
+https://apptainer.org/docs/user/latest/cli/apptainer_run.html
+
+# Run interactively with a shell:
+https://apptainer.org/docs/user/main/cli/apptainer_shell.html
+
+# Interesting. Apptainer can see local system files and interact with them:
+https://carpentries-incubator.github.io/apptainer-introduction/04-apptainer-files/index.html
+
+# If you have a specific command in particular you want to run, use the apptainer exec command:
+https://apptainer.org/docs/user/main/cli/apptainer_exec.html
+
+# Notes for fixing container build issues (disorganized):
+https://askubuntu.com/questions/160897/how-do-i-search-for-available-packages-from-the-command-line
+https://askubuntu.com/questions/1480616/adding-opencpn-repository-attributeerror-nonetype-object-has-no-attribute
+https://stackoverflow.com/questions/273743/using-wget-to-recursively-fetch-a-directory-with-arbitrary-files-in-it
