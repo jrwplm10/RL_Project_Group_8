@@ -3,6 +3,7 @@ from flow.envs.base import Env
 from flow.envs.bay_bridge import BayBridgeEnv
 from flow.envs.bottleneck import BottleneckAccelEnv, BottleneckEnv, \
     BottleneckDesiredVelocityEnv
+from flow.envs.roundabout import RoundaboutEnv
 from flow.envs.traffic_light_grid import TrafficLightGridEnv, \
     TrafficLightGridPOEnv, TrafficLightGridTestEnv, TrafficLightGridBenchmarkEnv
 from flow.envs.ring.lane_change_accel import LaneChangeAccelEnv, \
@@ -35,6 +36,7 @@ __all__ = [
     'TrafficLightGridPOEnv',
     'TrafficLightGridBenchmarkEnv',
     'BottleneckDesiredVelocityEnv',
+    'RoundaboutEnv',
     'TestEnv',
     'BayBridgeEnv',
     # deprecated classes
