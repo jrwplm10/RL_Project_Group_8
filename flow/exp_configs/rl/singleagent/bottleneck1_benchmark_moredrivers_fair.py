@@ -24,7 +24,7 @@ from flow.controllers import RLController, ContinuousRouter
 # time horizon of a single rollout
 HORIZON = 1500
 
-N_CPUS = 2
+N_CPUS = 8
 N_ROLLOUTS = N_CPUS * 4
 SCALING = 1
 NUM_LANES = 4 * SCALING  # number of lanes in the widest highway
