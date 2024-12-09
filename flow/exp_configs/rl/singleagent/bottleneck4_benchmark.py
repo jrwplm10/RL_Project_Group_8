@@ -1,9 +1,9 @@
-"""Benchmark for bottleneck2.
+"""Benchmark for bottleneck4.
 
-25% AV penetration
+75% AV penetration
 
 Bottleneck in which the actions are specifying a desired velocity in a segment
-of space. The autonomous penetration rate is 25%.
+of space. The autonomous penetration rate is 75%.
 Human lane changing is enabled.
 
 - **Action Dimension**: (?, )
@@ -30,7 +30,7 @@ SCALING = 1
 NUM_LANES = 4 * SCALING  # number of lanes in the widest highway
 DISABLE_TB = True
 DISABLE_RAMP_METER = True
-AV_FRAC = 0.25
+AV_FRAC = 0.75
 
 vehicles = VehicleParams()
 vehicles.add(
@@ -103,7 +103,7 @@ net_params = NetParams(
 
 flow_params = dict(
     # name of the experiment
-    exp_tag="bottleneck_2_bench",
+    exp_tag="bottleneck_4_bench",
 
     # name of the flow environment the experiment is running on
     env_name=BottleneckDesiredVelocityEnv,

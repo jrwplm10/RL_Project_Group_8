@@ -1,9 +1,9 @@
-"""Benchmark for bottleneck3.
+"""Benchmark for bottleneck4 fair.
 
 75% AV penetration
 
 Bottleneck in which the actions are specifying a desired velocity in a segment
-of space. The autonomous penetration rate in this example is 25%.
+of space. The autonomous penetration rate is 75%.
 Human lane changing is enabled.
 
 - **Action Dimension**: (?, )
