@@ -43,6 +43,35 @@ Here the arguments are:
 """
 
 
+def lane_velocity_std(edge_id, kernel):
+    # For a given edge, compute the variance of the mean speeds in each lane
+    # Lower variance is better
+    # TODO: Normalize by speed?
+    # Return mean(lane_avgs), std(lane_avgs)
+
+    # Copying some code from compute_reward in bottleneck_fair.py
+    veh_ids_edge = kernel.vehicle.get_ids_by_edge(edge_id)  # Some bottleneck edge
+
+    num_lanes = kernel.network.num_lanes(edge_id)  # lanes in this particular edge
+    lane_speeds_list = [[] for lane_num in range(num_lanes)]
+
+    # get the speeds of all vehicles in different lanes
+    for veh_id in veh_ids_edge:
+        lane = kernel.vehicle.get_lane(veh_id)
+        speed = kernel.vehicle.get_speed(veh_id)
+        lane_speeds_list[lane].append(speed)
+
+    if not any(lane_speeds_list):
+        # if all lists of lane speeds in lane_speeds_3_list are empty (no cars in the edge) then standard deviation is zero
+        return 0, 0
+    else:
+        # evaluate the mean speeds for each lane in edge 3 if the list of speeds for that lane is non empty
+        mean_speeds = [np.mean(lane_speeds) for lane_speeds in lane_speeds_list if lane_speeds]
+        # ignore nans while evaluating std
+        # return np.nanmean(mean_speeds), np.nanstd(mean_speeds)
+        return np.nanstd(mean_speeds)
+
+
 def visualizer_rllib(args):
     """Visualizer for RLlib experiments.
 
@@ -148,6 +177,9 @@ def visualizer_rllib(args):
         config['horizon'] = args.horizon
         env_params.horizon = args.horizon
 
+    print("Visualization Horizon: " + str(env_params.horizon))
+    # The default seems to be 1500.
+
     # create the agent that will be used to compute the actions
     agent = agent_cls(env=env_name, config=config)
     checkpoint = result_dir + '/checkpoint_' + args.checkpoint_num
@@ -203,6 +235,15 @@ def visualizer_rllib(args):
     final_inflows = []
     mean_speed = []
     std_speed = []
+
+    metric_timespan = 500
+    # Specific to our network
+    edge_3 = '3'
+    edge_4 = '4'
+
+    mean_stds_edge3 = []
+    mean_stds_edge4 = []
+
     for i in range(args.num_rollouts):
         vel = []
         state = env.reset()
@@ -210,7 +251,11 @@ def visualizer_rllib(args):
             ret = {key: [0] for key in rets.keys()}
         else:
             ret = 0
-        for _ in range(env_params.horizon):
+
+        sum_stds_edge3 = 0
+        sum_stds_edge4 = 0
+
+        for timestep in range(env_params.horizon):
             vehicles = env.unwrapped.k.vehicle
             speeds = vehicles.get_speed(vehicles.get_ids())
 
@@ -237,19 +282,30 @@ def visualizer_rllib(args):
                     ret[policy_map_fn(actor)][0] += rew
             else:
                 ret += reward
+
+            if timestep > (env_params.horizon - metric_timespan):
+                sum_stds_edge3 += lane_velocity_std(edge_3, env.unwrapped.k)
+                sum_stds_edge4 += lane_velocity_std(edge_4, env.unwrapped.k)
+
             if multiagent and done['__all__']:
                 break
             if not multiagent and done:
                 break
+
+        mean_std_edge3 = sum_stds_edge3 / metric_timespan
+        mean_std_edge4 = sum_stds_edge4 / metric_timespan
+
+        mean_stds_edge3.append(mean_std_edge3)
+        mean_stds_edge4.append(mean_std_edge4)
 
         if multiagent:
             for key in rets.keys():
                 rets[key].append(ret[key])
         else:
             rets.append(ret)
-        outflow = vehicles.get_outflow_rate(500)
+        outflow = vehicles.get_outflow_rate(metric_timespan)
         final_outflows.append(outflow)
-        inflow = vehicles.get_inflow_rate(500)
+        inflow = vehicles.get_inflow_rate(metric_timespan)
         final_inflows.append(inflow)
         if np.all(np.array(final_inflows) > 1e-5):
             throughput_efficiency = [x / y for x, y in
@@ -298,11 +354,23 @@ def visualizer_rllib(args):
     print(final_inflows)
     print('Average, std: {}, {}'.format(np.mean(final_inflows),
                                         np.std(final_inflows)))
-    # Compute throughput efficiency in the last 500 sec of the
+    # Compute throughput efficiency in the last 500 sec of the run
     print("Throughput efficiency (veh/hr):")
     print(throughput_efficiency)
     print('Average, std: {}, {}'.format(np.mean(throughput_efficiency),
                                         np.std(throughput_efficiency)))
+
+    # JL: Fairness metrics?
+    # Bringing in some code from the reward computation in bottleneck_fair
+    print("Average standard deviation of vehicle velocities, edge 3:")
+    print(mean_stds_edge3)
+    print('Average, std: {}, {}'.format(np.mean(mean_stds_edge3),
+                                        np.std(mean_stds_edge3)))
+
+    print("Average standard deviation of vehicle velocities, edge 4:")
+    print(mean_stds_edge4)
+    print('Average, std: {}, {}'.format(np.mean(mean_stds_edge4),
+                                        np.std(mean_stds_edge4)))
 
     # terminate the environment
     env.unwrapped.terminate()
